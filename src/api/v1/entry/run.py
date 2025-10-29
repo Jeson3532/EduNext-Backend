@@ -12,15 +12,14 @@ app = FastAPI(title="Бэкенд для образовательной плат
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = []
     for error in exc.errors():
-        # Формируем понятное сообщение для каждого поля
-        field = ".".join(map(str, error["loc"]))
+        print(error["loc"])
+        field = "".join(map(str, error["loc"][1]))
         msg = error["msg"]
 
         if error["type"] == "missing":
             msg = f"Поле {field} обязательно для заполнения."
         elif error["type"] == "string_pattern":
             msg = f"Поле {field} содержит недопустимые символы."
-        # ... другие типы ошибок
 
         errors.append({
             "field": field,
@@ -32,7 +31,7 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         status_code=status.HTTP_400_BAD_REQUEST,
         content={
             "success": False,
-            "message": "Ошибка валидации данных",
+            "message": "Произошла ошибка при валидации данных",
             "errors": errors
         }
     )

@@ -29,7 +29,9 @@ class Users(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True, comment="Айди в системе")
     username: Mapped[str] = mapped_column(nullable=False, unique=True)
-    name: Mapped[str] = mapped_column(nullable=False)
+    password: Mapped[str] = mapped_column(nullable=False, comment="Хешированный пароль пользователя")
+    first_name: Mapped[str] = mapped_column(nullable=False)
+    last_name: Mapped[str] = mapped_column(nullable=False)
     age: Mapped[int] = mapped_column(nullable=False)
     email: Mapped[str] = mapped_column(unique=True)
     phone: Mapped[str] = mapped_column(unique=True, nullable=True)
@@ -40,9 +42,9 @@ class Users(Base):
         async with engine.begin() as connect:
             logger.info(f"Создаю базу данных {cls.__tablename__}...")
             await connect.run_sync(
-                lambda sync_conn: cls.metadata.create_all(
-                    sync_conn,
-                    tables=[cls.__table__]
-                )
+                lambda sync_conn: cls.metadata.drop_all(sync_conn, tables=[cls.__table__])
+            )
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.create_all(sync_conn, tables=[cls.__table__])
             )
             logger.info("База данных создана!")
