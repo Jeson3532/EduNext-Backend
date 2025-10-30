@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 from src.utils.logger import logger
 from src.api.v1.routes.auth import router as auth_router
+from src.api.v1.routes.course import router as course_router
 
 
 def get_routers():

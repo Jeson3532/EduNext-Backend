@@ -1,7 +1,7 @@
-from fastapi import APIRouter, HTTPException, Request, Depends
+from fastapi import APIRouter, HTTPException, Request, Depends, Body
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
-from src.api.v1 import schemas as m
+from src.api.v1.schemas import auth_schema as auth_m, user_schema as user_m
 from src.api.v1.enums import Roles
 from src.database.methods import UserMethods
 from src.database.responses import SuccessResponse, FailedResponse
@@ -9,12 +9,13 @@ from src.utils.logger import logger
 from src.api.v1 import responses
 from pydantic import ValidationError
 from src.api.v1.methods import security
+from src.api.v1.examples import auth_examples
 
-router = APIRouter(prefix="/v1/auth", tags=['Authentication', 'Аутентификация'])
+router = APIRouter(prefix="/api/v1/auth", tags=['Authentication', 'Аутентификация'])
 
 
-@router.post("/register", response_model=m.RegVisibleForm)
-async def _(reg_form: m.RegForm):
+@router.post("/register", response_model=auth_m.RegVisibleForm)
+async def _(reg_form: auth_m.RegForm = Body(..., example=auth_examples.REG_FORM_EXAMPLE)):
     try:
         personal_info = {
             "username": reg_form.username,
@@ -23,16 +24,16 @@ async def _(reg_form: m.RegForm):
             "last_name": reg_form.last_name,
             "age": reg_form.age,
             "email": reg_form.email,
-            "phone": reg_form.phone,
+            "phone": reg_form.phone.split("tel:")[1],
             "role": Roles.USER
         }
-        model_pi = m.RegResponse(**personal_info)
+        model_pi = auth_m.RegResponse(**personal_info)
         created_user = await UserMethods.register_user(model_pi)
         if isinstance(created_user, FailedResponse):
             details = created_user.detail
             status_code = created_user.status_code
             raise HTTPException(status_code=status_code, detail=responses.fail_response(status_code, details))
-        data = m.RegVisibleForm(**created_user.data).model_dump()
+        data = auth_m.RegVisibleForm(**created_user.data).model_dump()
         return JSONResponse(content=responses.success_response(200, data=data))
     except ValidationError as e:
         logger.error(e)
@@ -46,9 +47,14 @@ async def _(reg_form: m.RegForm):
 @router.post("/login")
 async def _(tokens: dict = Depends(security.auth_user)):
     return {"access_token": tokens.get("access_token", None),
-         "refresh_token": tokens.get("refresh_token", None)}
+            "refresh_token": tokens.get("refresh_token", None)}
 
 
-@router.get("/test")
-async def _(username: dict = Depends(security.get_user)):
-    return responses.success_response(status_code=200, data={"success": True, "user": username})
+@router.post("/refresh")
+async def _(new_access_token: str = Depends(security.refresh_token)):
+    return responses.success_response(status_code=200, data=new_access_token)
+
+
+@router.get("/me")
+async def _(me: user_m.UserResponse = Depends(security.get_user)):
+    return responses.success_response(status_code=200, data=f"Привет, {me.username}!")

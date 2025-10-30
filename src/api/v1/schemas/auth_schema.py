@@ -1,4 +1,5 @@
 from pydantic import BaseModel, Field, EmailStr
+from pydantic_extra_types.phone_numbers import PhoneNumber
 from typing import Optional
 
 
@@ -9,7 +10,7 @@ class RegForm(BaseModel):
     last_name: str = Field(..., description='Фамилия пользователя', min_length=2)
     age: int = Field(..., description='Возраст пользователя', ge=12)
     email: EmailStr = Field(..., description='Почта пользователя')
-    phone: Optional[str] = Field(default=None, description='Контактный номер пользователя')
+    phone: Optional[PhoneNumber] = Field(default=None, description='Контактный номер пользователя')
 
 
 class RegResponse(RegForm):
@@ -27,3 +28,5 @@ class RegVisibleForm(BaseModel):
 
 class RefreshToken(BaseModel):
     refresh_token: str
+
+

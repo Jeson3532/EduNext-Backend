@@ -41,6 +41,9 @@ def add_routers(routs: list):
 
 async def create_tables():
     await dbs.Users.create_table()
+    await dbs.Course.create_table()
+    await dbs.Lesson.create_table()
+    await dbs.UserProgress.create_table()
 
 # Инициализация роутеров
 routers = get_routers()
