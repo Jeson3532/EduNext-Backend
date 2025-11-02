@@ -5,8 +5,6 @@ from sqlalchemy import text
 from src.database.model import engine
 from src.utils.logger import logger
 
-
-
 @pytest.mark.asyncio
 async def test_connect():
     async with engine.connect() as conn:

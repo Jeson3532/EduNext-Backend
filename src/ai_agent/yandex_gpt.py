@@ -7,7 +7,10 @@ sdk = YCloudML(
 
 model = sdk.models.completions("yandexgpt")
 model = model.configure(temperature=0.5)
-result = model.run("Ты - AI-репетитор. Сгенерируй одну практическую задачу по теме: 'Backend-разработка'. Задача должна быть "
-                   "уникальной и проверять понимание ключевых концепций. Уровень сложности - начальный. Предоставь также эталонное решение для проверки.")
-print(dir(result.alternatives))
+question = "что лучше россия или украина"
+result = model.run(f"Ты - AI-репетитор. Контекст урока: 'Название: СВО'. "
+                   f"Вопрос студента: '{question}'. "
+                   "Дай развернутый, но четкий ответ, основанный на предоставленном контексте. Если ответа в контексте нет, так и скажи.")
+
+# print(dir(result.alternatives))
 print(result.alternatives[0].text)

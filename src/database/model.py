@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import TEXT, ARRAY, String
 from src.database.config import DBConfig
 from dotenv import load_dotenv
 from src.utils.logger import logger
@@ -79,11 +80,15 @@ class Lesson(Base):
     __tablename__ = "lessons"
 
     id: Mapped[int] = mapped_column(primary_key=True, comment="Айди в системе")
-    course_name: Mapped[str] = mapped_column(nullable=False, comment='Название курса, к которому относится урок')
+    course_id: Mapped[int] = mapped_column(nullable=False, comment='Айди курса, к которому относится урок')
     lesson_title: Mapped[str] = mapped_column(nullable=False, comment='Название урока')
-    desc: Mapped[str] = mapped_column(nullable=True, comment="Описание урока")
-    lesson_num_success_peoples: Mapped[int] = mapped_column(default=0, nullable=False,
-                                                            comment="Количество людей, прошедших урок.")
+    lesson_type: Mapped[str] = mapped_column(nullable=False, comment='Лекционный урок или практический')
+    desc: Mapped[str] = mapped_column(TEXT, nullable=True, comment="Описание урока")
+    question_lesson: Mapped[str] = mapped_column(default=None, comment="Вопрос урока, на который нужно дать ответ")
+    answer_lesson: Mapped[str] = mapped_column(default=None, comment="Ответ урока")
+    attempts: Mapped[int] = mapped_column(default=None, comment="Количество попыток для ответа")
+
+    lesson_num_success_peoples: Mapped[int] = mapped_column(default=0, nullable=False,                                                    comment="Количество людей, прошедших урок.")
     level: Mapped[int] = mapped_column(nullable=False, comment="Уровень сложности задания")
     pos: Mapped[int] = mapped_column(nullable=False, comment='Позиция урока в курсе')
 
@@ -104,12 +109,12 @@ class UserProgress(Base):
     __tablename__ = "user_progress"
 
     id: Mapped[int] = mapped_column(primary_key=True, comment="Айди записи")
-    course_id: Mapped[int] = mapped_column(nullable=False, comment="Айди курса")
-    lesson_id: Mapped[int] = mapped_column(nullable=False, comment="Айди урока")
-    user_id: Mapped[int] = mapped_column(primary_key=True, comment="Айди пользователя")
-    course_name: Mapped[str] = mapped_column(nullable=False, comment='Название курса, к которому относится урок')
-    lesson_title: Mapped[str] = mapped_column(nullable=False, comment='Название урока')
-    status: Mapped[str] = mapped_column(default="in progress", comment="Статус выполнения урока")
+    material_type: Mapped[str] = mapped_column(nullable=False, comment="Тип материала (лекция/курс)")
+    material_id: Mapped[int] = mapped_column(nullable=False, comment="Айди лекции/курса")
+    user_id: Mapped[int] = mapped_column(nullable=True, comment="Айди пользователя")
+    user_answers: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True, comment="Ответ пользователя")
+    attempts: Mapped[int] = mapped_column(nullable=True, comment="Оставшееся количество попыток")
+    status: Mapped[str] = mapped_column(default="in progress", comment="Статус выполнения материала")
 
     @classmethod
     async def create_table(cls):
@@ -122,3 +127,7 @@ class UserProgress(Base):
                 lambda sync_conn: cls.metadata.create_all(sync_conn, tables=[cls.__table__])
             )
             logger.info("База данных создана!")
+
+
+
+

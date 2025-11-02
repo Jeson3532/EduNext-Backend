@@ -1,15 +1,17 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from src.api.v1.schemas import course_schema as course_m, user_schema as user_m
 from src.api.v1.methods import security
 from src.api.v1 import responses
-from src.database.methods import CourseMethods
+from src.api.v1.enums import MaterialTypes, ProgressTypes
+from src.database.methods import CourseMethods, ProgressMethods
 from src.database.responses import FailedResponse
+from pydantic import ValidationError
 
 router = APIRouter(prefix="/api/v1/course", tags=['Курсы', 'Courses'])
 
 
 @router.post("/addCourse")
-async def _(data: course_m.CourseResponse, user: user_m.UserResponse = Depends(security.get_user)):
+async def _(data: course_m.CourseInput, user: user_m.UserResponse = Depends(security.get_user)):
     course = course_m.CourseAddModel(
         course_title=data.course_title,
         author=user.username,
@@ -18,6 +20,36 @@ async def _(data: course_m.CourseResponse, user: user_m.UserResponse = Depends(s
     )
     response = await CourseMethods.add_course(course)
     if isinstance(response, FailedResponse):
-        raise HTTPException(status_code=response.status_code, detail=response.detail)
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=response.status_code, detail=detail)
 
     return responses.success_response(data={"message": "Курс успешно создан", "course": course})
+
+
+@router.get("/getCourse")
+async def _(name: str = Query(default=None), id_: str = Query(default=None),
+            user: user_m.UserResponse = Depends(security.get_user)):
+    try:
+        search = course_m.SearchCourse(course_name=name, course_id=id_)
+        response = await CourseMethods.get_courses(course_search=search)
+        if isinstance(response, FailedResponse):
+            detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+            raise HTTPException(status_code=response.status_code, detail=detail)
+        return responses.success_response(data=response.data)
+    except ValidationError as e:
+        return responses.fail_response(status_code=422, detail='Ошибка при валидации данных. Убедитесь, что вводите всё в соответствии с формой')
+
+
+@router.post("/sign")
+async def _(data: course_m.SignCourse, user: user_m.UserResponse = Depends(security.get_user)):
+    material = user_m.UserAddProgress(
+        user_id=user.user_id,
+        material_id=data.course_id,
+        material_type=MaterialTypes.COURSE,
+        status=ProgressTypes.PROGRESS
+    )
+    result = await ProgressMethods.start_material(material)
+    if isinstance(result, FailedResponse):
+        detail = responses.fail_response(status_code=result.status_code, detail=result.detail)
+        raise HTTPException(status_code=result.status_code, detail=detail)
+    return responses.success_response(data=result.data)
