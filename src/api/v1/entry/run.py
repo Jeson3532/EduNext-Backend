@@ -12,8 +12,8 @@ app = FastAPI(title="Бэкенд для образовательной плат
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     errors = []
     for error in exc.errors():
-        print(error["loc"])
-        field = "".join(map(str, error["loc"][1]))
+        print("LOCK", error["loc"][1])
+        field = "".join(map(str, error["loc"][1])) if type(error["loc"][1]) is not int else None
         msg = error["msg"]
 
         if error["type"] == "missing":

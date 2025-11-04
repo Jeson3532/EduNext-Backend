@@ -9,7 +9,7 @@ class LessonInput(BaseModel):
     level: int = Field(..., description="Уровень сложности", ge=1, le=3)
     question_lesson: Optional[str] = Field(default=None, description='Вопрос урока, на который нужно дать ответ')
     answer_lesson: Optional[str] = Field(default=None, description='Ответ урока')
-    attempts: Optional[int] = Field(default=3, description='Сколько попыток дается на ответ', le=100)
+    attempts: Optional[int] = Field(default=None, description='Сколько попыток дается на ответ', le=100)
 
 
 class LessonAddModel(LessonInput):
@@ -20,3 +20,9 @@ class LessonAddModel(LessonInput):
 
 class SignLesson(BaseModel):
     lesson_id: int
+
+
+class AnswerLesson(BaseModel):
+    lesson_id: int
+    answer: str
+

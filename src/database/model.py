@@ -84,9 +84,9 @@ class Lesson(Base):
     lesson_title: Mapped[str] = mapped_column(nullable=False, comment='Название урока')
     lesson_type: Mapped[str] = mapped_column(nullable=False, comment='Лекционный урок или практический')
     desc: Mapped[str] = mapped_column(TEXT, nullable=True, comment="Описание урока")
-    question_lesson: Mapped[str] = mapped_column(default=None, comment="Вопрос урока, на который нужно дать ответ")
-    answer_lesson: Mapped[str] = mapped_column(default=None, comment="Ответ урока")
-    attempts: Mapped[int] = mapped_column(default=None, comment="Количество попыток для ответа")
+    question_lesson: Mapped[str] = mapped_column(default=None, nullable=True, comment="Вопрос урока, на который нужно дать ответ")
+    answer_lesson: Mapped[str] = mapped_column(default=None, nullable=True, comment="Ответ урока")
+    attempts: Mapped[int] = mapped_column(default=None, nullable=True, comment="Количество попыток для ответа")
 
     lesson_num_success_peoples: Mapped[int] = mapped_column(default=0, nullable=False,                                                    comment="Количество людей, прошедших урок.")
     level: Mapped[int] = mapped_column(nullable=False, comment="Уровень сложности задания")
@@ -112,7 +112,7 @@ class UserProgress(Base):
     material_type: Mapped[str] = mapped_column(nullable=False, comment="Тип материала (лекция/курс)")
     material_id: Mapped[int] = mapped_column(nullable=False, comment="Айди лекции/курса")
     user_id: Mapped[int] = mapped_column(nullable=True, comment="Айди пользователя")
-    user_answers: Mapped[list[str]] = mapped_column(ARRAY(String), nullable=True, comment="Ответ пользователя")
+    user_answers: Mapped[list[TEXT]] = mapped_column(ARRAY(String), nullable=True, comment="Ответ пользователя")
     attempts: Mapped[int] = mapped_column(nullable=True, comment="Оставшееся количество попыток")
     status: Mapped[str] = mapped_column(default="in progress", comment="Статус выполнения материала")
 

@@ -27,7 +27,8 @@ async def _(data: course_m.CourseInput, user: user_m.UserResponse = Depends(secu
 
 
 @router.get("/getCourse")
-async def _(name: str = Query(default=None), id_: str = Query(default=None),
+async def _(name: str = Query(default=None, description="Название курса"),
+            id_: str = Query(default=None, description="Айди курса"),
             user: user_m.UserResponse = Depends(security.get_user)):
     try:
         search = course_m.SearchCourse(course_name=name, course_id=id_)
@@ -37,7 +38,8 @@ async def _(name: str = Query(default=None), id_: str = Query(default=None),
             raise HTTPException(status_code=response.status_code, detail=detail)
         return responses.success_response(data=response.data)
     except ValidationError as e:
-        return responses.fail_response(status_code=422, detail='Ошибка при валидации данных. Убедитесь, что вводите всё в соответствии с формой')
+        return responses.fail_response(status_code=422,
+                                       detail='Ошибка при валидации данных. Убедитесь, что вводите всё в соответствии с формой')
 
 
 @router.post("/sign")

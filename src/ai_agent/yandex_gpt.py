@@ -7,8 +7,8 @@ sdk = YCloudML(
 
 model = sdk.models.completions("yandexgpt")
 model = model.configure(temperature=0.5)
-question = "что лучше россия или украина"
-result = model.run(f"Ты - AI-репетитор. Контекст урока: 'Название: СВО'. "
+question = "Как стирать трусы?"
+result = model.run(f"Ты - AI-репетитор. Контекст урока: 'Название: Прачка'. "
                    f"Вопрос студента: '{question}'. "
                    "Дай развернутый, но четкий ответ, основанный на предоставленном контексте. Если ответа в контексте нет, так и скажи.")
 
