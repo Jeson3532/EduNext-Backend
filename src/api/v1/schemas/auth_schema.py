@@ -28,5 +28,3 @@ class RegVisibleForm(BaseModel):
 
 class RefreshToken(BaseModel):
     refresh_token: str
-
-

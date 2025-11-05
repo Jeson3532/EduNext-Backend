@@ -37,5 +37,3 @@ class UpdateNumLessons(BaseModel):
 
 class SignCourse(BaseModel):
     course_id: int
-
-

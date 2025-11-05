@@ -6,6 +6,7 @@ class LessonInput(BaseModel):
     lesson_title: str = Field(..., description='Название урока')
     course_id: int = Field(..., description='Айди курса, к которому относится урок')
     desc: str = Field(..., description="Описание урока", min_length=12, max_length=256)
+    material: str = Field(..., description="Материал урока", min_length=32, max_length=6096)
     level: int = Field(..., description="Уровень сложности", ge=1, le=3)
     question_lesson: Optional[str] = Field(default=None, description='Вопрос урока, на который нужно дать ответ')
     answer_lesson: Optional[str] = Field(default=None, description='Ответ урока')
@@ -25,4 +26,3 @@ class SignLesson(BaseModel):
 class AnswerLesson(BaseModel):
     lesson_id: int
     answer: str
-

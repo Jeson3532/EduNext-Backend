@@ -1,6 +1,7 @@
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
-from sqlalchemy import TEXT, ARRAY, String
+from sqlalchemy import TEXT, ARRAY, String, TypeDecorator
+import json
 from src.database.config import DBConfig
 from dotenv import load_dotenv
 from src.utils.logger import logger
@@ -19,6 +20,20 @@ dbname = db_config.DBNAME
 
 engine = create_async_engine(f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{dbname}", pool_pre_ping=True)
 session_maker = async_sessionmaker(bind=engine, autoflush=False)
+
+
+class JSON(TypeDecorator):
+    impl = TEXT
+
+    def process_bind_param(self, value, dialect):
+        if value is None:
+            return None
+        return json.dumps(value, ensure_ascii=False)
+
+    def process_result_value(self, value, dialect):
+        if value is None:
+            return None
+        return json.loads(value)
 
 
 class Base(DeclarativeBase):
@@ -84,11 +99,14 @@ class Lesson(Base):
     lesson_title: Mapped[str] = mapped_column(nullable=False, comment='Название урока')
     lesson_type: Mapped[str] = mapped_column(nullable=False, comment='Лекционный урок или практический')
     desc: Mapped[str] = mapped_column(TEXT, nullable=True, comment="Описание урока")
-    question_lesson: Mapped[str] = mapped_column(default=None, nullable=True, comment="Вопрос урока, на который нужно дать ответ")
+    material: Mapped[str] = mapped_column(TEXT, comment="Материал урока")
+    question_lesson: Mapped[str] = mapped_column(default=None, nullable=True,
+                                                 comment="Вопрос урока, на который нужно дать ответ")
     answer_lesson: Mapped[str] = mapped_column(default=None, nullable=True, comment="Ответ урока")
     attempts: Mapped[int] = mapped_column(default=None, nullable=True, comment="Количество попыток для ответа")
 
-    lesson_num_success_peoples: Mapped[int] = mapped_column(default=0, nullable=False,                                                    comment="Количество людей, прошедших урок.")
+    lesson_num_success_peoples: Mapped[int] = mapped_column(default=0, nullable=False,
+                                                            comment="Количество людей, прошедших урок.")
     level: Mapped[int] = mapped_column(nullable=False, comment="Уровень сложности задания")
     pos: Mapped[int] = mapped_column(nullable=False, comment='Позиция урока в курсе')
 
@@ -129,5 +147,23 @@ class UserProgress(Base):
             logger.info("База данных создана!")
 
 
+class AiTasks(Base):
+    __tablename__ = "ai_tasks"
 
+    id: Mapped[int] = mapped_column(primary_key=True, comment="Айди записи")
+    task: Mapped[str] = mapped_column(JSON, nullable=False, comment="Задача от ИИ")
+    answer: Mapped[str] = mapped_column(JSON, nullable=False, comment="Правильный ответ")
+    user_id: Mapped[int] = mapped_column(nullable=True, comment="Айди пользователя")
+    status: Mapped[str] = mapped_column(default="in progress", comment="Статус выполнения задания")
 
+    @classmethod
+    async def create_table(cls):
+        async with engine.begin() as connect:
+            logger.info(f"Создаю базу данных {cls.__tablename__}...")
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.drop_all(sync_conn, tables=[cls.__table__])
+            )
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.create_all(sync_conn, tables=[cls.__table__])
+            )
+            logger.info("База данных создана!")

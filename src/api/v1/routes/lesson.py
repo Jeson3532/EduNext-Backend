@@ -1,10 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from src.api.v1.schemas import lesson_schema as lesson_m, user_schema as user_m
+from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
+from src.api.v1.schemas import lesson_schema as lesson_m, user_schema as user_m, tasks_schema as task_m
 from src.api.v1.methods import security
 from src.api.v1 import responses
-from src.database.methods import LessonMethods, CourseMethods, ProgressMethods
+from src.database.methods import LessonMethods, CourseMethods, ProgressMethods, AiTaskMethods
 from src.database.responses import FailedResponse
 from src.api.v1.enums import LessonTypes as lt, MaterialTypes, ProgressTypes
+from src.ai_agent.yandex_gpt import get_answer_ai, generate_task, compare_answers
+import json
 
 router = APIRouter(prefix="/api/v1/lesson", tags=['Лекции/Уроки', 'Lessons'])
 
@@ -39,6 +41,7 @@ async def _(data: lesson_m.LessonInput, user: user_m.UserResponse = Depends(secu
         lesson_title=data.lesson_title,
         course_id=data.course_id,
         desc=data.desc,
+        material=data.material,
         question_lesson=data.question_lesson,
         answer_lesson=data.answer_lesson,
         attempts=data.attempts,
@@ -144,19 +147,86 @@ async def _(body: user_m.BasicProgressModel, user: user_m.UserResponse = Depends
         raise HTTPException(status_code=response.status_code, detail=detail)
     return responses.success_response(data=result.data)
 
-# @router.post("/completeLesson")
-# async def _(progress_data: user_m.UserAddProgress, user: user_m.UserResponse = Depends(security.get_user)):
-# response = await LessonMethods.add_lesson(lesson)
-# if isinstance(response, FailedResponse):
-#     raise HTTPException(status_code=response.status_code, detail=response.detail)
-#
-# return responses.success_response(data={"message": "Урок успешно добавлен", "lesson": response.data})
+
+@router.post("/{lesson_id}/ask", tags=['AI-Tasks', 'ИИ-Задачи'], description="Задать вопрос по уроку AI-помощнику")
+async def _(lesson_id: int = Path(..., description="Айди урока"), q_body: task_m.TaskQuestionLesson = Body(...),
+            user: user_m.UserResponse = Depends(security.get_user)):
+    response = await LessonMethods.get_lesson(lesson_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    data = response.data
+
+    lesson_name = data.lesson_title
+    lesson_desc = data.desc
+    material = data.material
+    ai_answer = get_answer_ai(lesson_name, lesson_desc, material, q_body.question)
+    return responses.success_response(data=ai_answer)
 
 
-# @router.get("/getCourse")
-# async def _(name: str = Query(default=None), id_: str = Query(default=None)):
-#     search = course_m.SearchCourse(course_name=name, course_id=id_)
-#     response = await CourseMethods.get_courses(course_search=search)
-#     if isinstance(response, FailedResponse):
-#         raise HTTPException(status_code=response.status_code, detail=response.detail)
-#     return responses.success_response(data=response.data)
+@router.post("/{lesson_id}/generate-task", tags=['AI-Tasks', 'ИИ-Задачи'],
+             description="Сгенерировать задачу по контексту урока")
+async def _(lesson_id: int = Path(..., description="Айди урока"),
+            user: user_m.UserResponse = Depends(security.get_user)):
+    response = await LessonMethods.get_lesson(lesson_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    data = response.data
+    # Данные о уроке
+    lesson_name = data.lesson_title
+    lesson_desc = data.desc
+    # Генерация задачи и конвертация в json
+    ai_task = generate_task(lesson_name, lesson_desc)
+    json_ai_task = json.loads(ai_task)
+    model = task_m.AddTaskModel(
+        user_id=user.user_id,
+        task=json_ai_task['task'],
+        answer=json_ai_task['answer']
+    )
+    # Добавление таски в БД
+    response = await AiTaskMethods.add_task(model)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    return responses.success_response(data=json_ai_task['task'])
+
+
+@router.post("/{task_id}/answer-ai-task", tags=['AI-Tasks', 'ИИ-Задачи'], description="Ответить на задачу от ИИ")
+async def _(task_id: int = Path(..., description="Айди задания, которое сгенерировала нейросеть"),
+            answer: task_m.TaskAnswerLesson = Body(...),
+            user: user_m.UserResponse = Depends(security.get_user)):
+    # Получение таски
+    response = await AiTaskMethods.get_task(task_id, user.user_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=response.status_code, detail=detail)
+    # Проверка статуса выполнения задания
+    data = response.data
+    if data.status == ProgressTypes.COMPLETED:
+        detail = responses.fail_response(status_code=400, detail="Задание уже завершено")
+        raise HTTPException(status_code=400, detail=detail)
+    # Проверка правильности ответа
+    true_answer = data.answer
+    ai_solution = compare_answers(answer, true_answer)
+    if json.loads(ai_solution):
+        # Пометка успешного выполнения задания в БД
+        response = await AiTaskMethods.complete_task(task_id)
+        if isinstance(response, FailedResponse):
+            detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+            raise HTTPException(status_code=response.status_code, detail=detail)
+        return responses.success_response(data=response.data)
+    else:
+        return responses.success_response(data="К сожалению, ответ неверный.")
+
+
+@router.get("/get-ai-tasks", tags=['AI-Tasks', 'ИИ-Задачи'],
+            description="Получить список задач, которые сгенерировала нейросеть лично для пользователя")
+async def _(user: user_m.UserResponse = Depends(security.get_user)):
+    # Получение тасок пользователя
+    response = await AiTaskMethods.get_user_tasks(user.user_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=response.status_code, detail=detail)
+
+    return responses.success_response(data=response.data)

@@ -1,11 +1,12 @@
 from src.database.model import session_maker
-from src.database.model import Users, Course, Lesson, UserProgress
+from src.database.model import Users, Course, Lesson, UserProgress, AiTasks
 from sqlalchemy import select, exists, cast, String, update
 from src.utils.logger import logger
 from src.api.v1.schemas import auth_schema as auth_m
 from src.api.v1.schemas import course_schema as course_m
 from src.api.v1.schemas import user_schema as user_m
 from src.api.v1.schemas import lesson_schema as lesson_m
+from src.api.v1.schemas import tasks_schema as task_m
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from src.database.responses import SuccessResponse, FailedResponse
 from src.api.v1.enums import MaterialTypes, ProgressTypes, LessonTypes
@@ -280,7 +281,7 @@ class LessonMethods:
                 lesson = state.scalar_one_or_none()
                 if isinstance(lesson, FailedResponse):
                     return FailedResponse(status_code=404, detail=f"Урока с айди {lesson_id} не существует")
-                lesson.lesson_num_success_peoples = lesson.lesson_num_success_peoples+1
+                lesson.lesson_num_success_peoples = lesson.lesson_num_success_peoples + 1
                 await session.commit()
                 return SuccessResponse(status_code=200, data=True)
 
@@ -427,9 +428,11 @@ class ProgressMethods:
                 state = await session.execute(query)
                 lesson_type = state.scalar_one_or_none()
                 if not lesson_type:
-                    return FailedResponse(status_code=404, detail=f"Лекции с айди {material_id} не существует, либо Вы не записаны на урок")
+                    return FailedResponse(status_code=404,
+                                          detail=f"Лекции с айди {material_id} не существует, либо Вы не записаны на урок")
                 if lesson_type != LessonTypes.LECTURE:
-                    return FailedResponse(status_code=400, detail=f"Данным методом можно завешить только лекционный урок")
+                    return FailedResponse(status_code=400,
+                                          detail=f"Данным методом можно завешить только лекционный урок")
                 # Остальные условия
                 query = select(UserProgress).where(UserProgress.user_id == user_id).where(
                     UserProgress.material_id == material_id)
@@ -437,7 +440,8 @@ class ProgressMethods:
 
                 progress = state.scalar_one_or_none()
                 if not progress:
-                    return FailedResponse(status_code=404, detail="Вы не записаны на этот урок, либо этого урока попросту не существует")
+                    return FailedResponse(status_code=404,
+                                          detail="Вы не записаны на этот урок, либо этого урока попросту не существует")
                 if progress.material_type != MaterialTypes.LECTURE:
                     return FailedResponse(status_code=400, detail="Материал не является лекцией")
                 if progress.status != ProgressTypes.PROGRESS:
@@ -545,6 +549,88 @@ class ProgressMethods:
                 answers = deepcopy(user_progress.user_answers)
                 await session.commit()
                 return SuccessResponse(status_code=200, data=answers)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+
+class AiTaskMethods:
+    @classmethod
+    async def add_task(cls, data: task_m.AddTaskModel):
+        async with session_maker() as session:
+            try:
+                dumped_model = data.model_dump()
+                new_task = AiTasks(**dumped_model)
+                session.add(new_task)
+                await session.commit()
+                return SuccessResponse(status_code=200, data=dumped_model)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def get_task(cls, task_id, user_id):
+        async with session_maker() as session:
+            try:
+                query = select(AiTasks).where(AiTasks.id == task_id).where(AiTasks.user_id == user_id)
+                state = await session.execute(query)
+                task = state.scalar_one_or_none()
+                if not task:
+                    return FailedResponse(status_code=404, detail="У Вас нет задач от искусственного интеллекта с указанным айди")
+                return SuccessResponse(status_code=200, data=task)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def complete_task(cls, task_id):
+        async with session_maker() as session:
+            try:
+                query = select(AiTasks).where(AiTasks.id == task_id)
+                state = await session.execute(query)
+                task = state.scalar_one_or_none()
+                if not task:
+                    return FailedResponse(status_code=404,
+                                          detail="Указанной задачи не существует")
+                task.status = ProgressTypes.COMPLETED
+                completed_task = deepcopy(task)
+                await session.commit()
+                return SuccessResponse(status_code=200, data={"status": "Успешно!", "body": completed_task})
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def get_user_tasks(cls, user_id):
+        async with session_maker() as session:
+            try:
+                query = select(AiTasks.id, AiTasks.task, AiTasks.status).where(AiTasks.user_id == user_id)
+                state = await session.execute(query)
+                tasks = state.mappings().all()
+                if not tasks:
+                    return FailedResponse(status_code=404,
+                                          detail="У пользователя нет задач от искусственного интеллекта")
+                return SuccessResponse(status_code=200, data=tasks)
             except ProgrammingError as e:
                 logger.error(e)
                 await session.rollback()

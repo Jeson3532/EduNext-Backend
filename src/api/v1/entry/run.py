@@ -36,14 +36,18 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         }
     )
 
+
 def add_routers(routs: list):
     return [app.include_router(router) for router in routs]
+
 
 async def create_tables():
     await dbs.Users.create_table()
     await dbs.Course.create_table()
     await dbs.Lesson.create_table()
     await dbs.UserProgress.create_table()
+    await dbs.AiTasks.create_table()
+
 
 # Инициализация роутеров
 routers = get_routers()
