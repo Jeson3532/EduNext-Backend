@@ -47,6 +47,8 @@ async def create_tables():
     await dbs.Lesson.create_table()
     await dbs.UserProgress.create_table()
     await dbs.AiTasks.create_table()
+    await dbs.Badges.create_table()
+    await dbs.UserBadges.create_table()
 
 
 # Инициализация роутеров

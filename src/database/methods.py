@@ -1,6 +1,6 @@
 from src.database.model import session_maker
-from src.database.model import Users, Course, Lesson, UserProgress, AiTasks
-from sqlalchemy import select, exists, cast, String, update
+from src.database.model import Users, Course, Lesson, UserProgress, AiTasks, Badges, UserBadges
+from sqlalchemy import select, exists, cast, String, update, ARRAY
 from src.utils.logger import logger
 from src.api.v1.schemas import auth_schema as auth_m
 from src.api.v1.schemas import course_schema as course_m
@@ -10,7 +10,8 @@ from src.api.v1.schemas import tasks_schema as task_m
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 from src.database.responses import SuccessResponse, FailedResponse
 from src.api.v1.enums import MaterialTypes, ProgressTypes, LessonTypes
-from datetime import datetime
+from src.badges.achievments import Achievement
+from typing import Optional
 from copy import deepcopy
 
 
@@ -58,6 +59,25 @@ class UserMethods:
                 return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
 
     @classmethod
+    async def get_user(cls, user_id: int):
+        async with session_maker() as session:
+            try:
+                query = select(Users).where(Users.id == user_id)
+                state = await session.execute(query)
+                user = state.scalar_one_or_none()
+                if user:
+                    return SuccessResponse(status_code=200, data=user)
+                return FailedResponse(status_code=404, detail="Пользователя не существует")
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
     async def get_user_id(cls, username: str):
         async with session_maker() as session:
             try:
@@ -67,6 +87,30 @@ class UserMethods:
                 if scalar:
                     return SuccessResponse(status_code=200, data=scalar)
                 return FailedResponse(status_code=404, detail="Пользователя не существует")
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def update_success_in_a_row(cls, user_id: int, bias: Optional[int] = 1, reset: bool = False):
+        async with session_maker() as session:
+            try:
+                query = select(Users).where(Users.id == user_id)
+                state = await session.execute(query)
+                user = state.scalar_one_or_none()
+                if not user:
+                    return FailedResponse(status_code=404, detail="Пользователь не найден")
+                if not reset:
+                    user.success_in_a_row = user.success_in_a_row + bias
+                else:
+                    user.success_in_a_row = 0
+                await session.commit()
+                return SuccessResponse(status_code=200, data=True)
             except ProgrammingError as e:
                 logger.error(e)
                 await session.rollback()
@@ -586,7 +630,8 @@ class AiTaskMethods:
                 state = await session.execute(query)
                 task = state.scalar_one_or_none()
                 if not task:
-                    return FailedResponse(status_code=404, detail="У Вас нет задач от искусственного интеллекта с указанным айди")
+                    return FailedResponse(status_code=404,
+                                          detail="У Вас нет задач от искусственного интеллекта с указанным айди")
                 return SuccessResponse(status_code=200, data=task)
             except ProgrammingError as e:
                 logger.error(e)
@@ -640,7 +685,76 @@ class AiTaskMethods:
                 await session.rollback()
                 return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
 
+
+class BadgeMethods:
+    @classmethod
+    async def give(cls, achievement: Achievement):
+        async with session_maker() as session:
+            try:
+                query = select(UserBadges).filter_by(
+                    user_id=achievement.user_id,
+                    badge_id=achievement.badge_id
+                )
+                state = await session.execute(query)
+                ex = state.scalar_one_or_none()
+                if not ex:
+                    model = UserBadges(user_id=achievement.user_id, badge_id=achievement.badge_id)
+                    session.add(model)
+                    await session.commit()
+                    return SuccessResponse(status_code=200, data=model)
+                return FailedResponse(status_code=400, detail="Достижение уже выдано")
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def get_badges_with_id(cls, badge_ids: list):
+        async with session_maker() as session:
+            try:
+                query = select(Badges).where(Badges.id.in_(badge_ids))
+                state = await session.execute(query)
+                badges = state.scalars().all()
+
+                if not badges:
+                    return FailedResponse(status_code=400, detail="Достижения с таким айди не существует")
+                return SuccessResponse(status_code=200, data=badges)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def get_user_badges(cls, user_id):
+        async with session_maker() as session:
+            try:
+                query = select(UserBadges.badge_id).where(UserBadges.user_id == user_id)
+                state = await session.execute(query)
+                user_badges_ids = state.scalars().all()
+                if not user_badges_ids:
+                    return FailedResponse(status_code=400, detail="У Вас нет достижений")
+                response = await cls.get_badges_with_id(user_badges_ids)
+                if isinstance(response, FailedResponse):
+                    return FailedResponse(response.status_code, response.detail)
+                return SuccessResponse(status_code=200, data=response.data)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
 # import asyncio
-# a = ProgressMethods()
-# res = asyncio.run(a.update_user_answers(1, 5, "Jopa"))
+# a = BadgeMethods()
+# res = asyncio.run(a.get_user_badges(1))
 # print(vars(res))
+

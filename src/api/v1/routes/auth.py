@@ -14,7 +14,7 @@ from src.api.v1.examples import auth_examples
 router = APIRouter(prefix="/api/v1/auth", tags=['Authentication', 'Аутентификация'])
 
 
-@router.post("/register", response_model=auth_m.RegVisibleForm)
+@router.post("/register", response_model=auth_m.RegVisibleForm, description="Регистрация пользователя в системе")
 async def _(reg_form: auth_m.RegForm = Body(..., example=auth_examples.REG_FORM_EXAMPLE)):
     try:
         personal_info = {
@@ -25,7 +25,8 @@ async def _(reg_form: auth_m.RegForm = Body(..., example=auth_examples.REG_FORM_
             "age": reg_form.age,
             "email": reg_form.email,
             "phone": reg_form.phone.split("tel:")[1],
-            "role": Roles.USER
+            "role": Roles.USER,
+            # "success_in_a_row": 0
         }
         model_pi = auth_m.RegResponse(**personal_info)
         created_user = await UserMethods.register_user(model_pi)
@@ -44,17 +45,17 @@ async def _(reg_form: auth_m.RegForm = Body(..., example=auth_examples.REG_FORM_
         )
 
 
-@router.post("/login")
+@router.post("/login", description="Авторизация пользователя через OAuth 2.0")
 async def _(tokens: dict = Depends(security.auth_user)):
     return {"access_token": tokens.get("access_token", None),
             "refresh_token": tokens.get("refresh_token", None)}
 
 
-@router.post("/refresh")
+@router.post("/refresh", description="Энд-поинт для обновления истекшего токена доступа")
 async def _(new_access_token: str = Depends(security.refresh_token)):
     return responses.success_response(status_code=200, data=new_access_token)
 
 
-@router.get("/me")
+@router.get("/me", description="Тестовый энд-поинт для проверки авторизации в системе")
 async def _(me: user_m.UserResponse = Depends(security.get_user)):
     return responses.success_response(status_code=200, data=f"Привет, {me.username}!")

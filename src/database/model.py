@@ -23,6 +23,7 @@ session_maker = async_sessionmaker(bind=engine, autoflush=False)
 
 
 class JSON(TypeDecorator):
+    cache_ok = True
     impl = TEXT
 
     def process_bind_param(self, value, dialect):
@@ -52,6 +53,7 @@ class Users(Base):
     email: Mapped[str] = mapped_column(unique=True)
     phone: Mapped[str] = mapped_column(unique=True, nullable=True)
     role: Mapped[str] = mapped_column(comment="Роль участника в системе")
+    success_in_a_row: Mapped[int] = mapped_column(default=0, comment="Верно решено задач подряд без ошибок")
 
     @classmethod
     async def create_table(cls):
@@ -155,6 +157,49 @@ class AiTasks(Base):
     answer: Mapped[str] = mapped_column(JSON, nullable=False, comment="Правильный ответ")
     user_id: Mapped[int] = mapped_column(nullable=True, comment="Айди пользователя")
     status: Mapped[str] = mapped_column(default="in progress", comment="Статус выполнения задания")
+
+    @classmethod
+    async def create_table(cls):
+        async with engine.begin() as connect:
+            logger.info(f"Создаю базу данных {cls.__tablename__}...")
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.drop_all(sync_conn, tables=[cls.__table__])
+            )
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.create_all(sync_conn, tables=[cls.__table__])
+            )
+            logger.info("База данных создана!")
+
+
+class Badges(Base):
+    __tablename__ = "badges"
+
+    id: Mapped[int] = mapped_column(primary_key=True, comment="Айди достижения")
+    badge_name: Mapped[str] = mapped_column(nullable=False, comment="Название достижения")
+    badge_type: Mapped[str] = mapped_column(nullable=False, comment="Тип достижения")
+    desc: Mapped[str] = mapped_column(nullable=False, comment="Описание достижения")
+    emoji: Mapped[str] = mapped_column(nullable=True, comment="Смайлик достижения")
+
+    @classmethod
+    async def create_table(cls):
+        async with engine.begin() as connect:
+            logger.info(f"Создаю базу данных {cls.__tablename__}...")
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.drop_all(sync_conn, tables=[cls.__table__])
+            )
+            await connect.run_sync(
+                lambda sync_conn: cls.metadata.create_all(sync_conn, tables=[cls.__table__])
+            )
+            logger.info("База данных создана!")
+
+
+class UserBadges(Base):
+    __tablename__ = "user_badges"
+
+    id: Mapped[int] = mapped_column(primary_key=True, comment="Айди записи")
+    badge_id: Mapped[int] = mapped_column(nullable=False, comment="Айди достижения")
+    user_id: Mapped[int] = mapped_column(nullable=False,
+                                         comment="Айди пользователя, которому принадлежит достижение")
 
     @classmethod
     async def create_table(cls):

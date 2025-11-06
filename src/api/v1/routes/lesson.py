@@ -2,17 +2,22 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Path, Body
 from src.api.v1.schemas import lesson_schema as lesson_m, user_schema as user_m, tasks_schema as task_m
 from src.api.v1.methods import security
 from src.api.v1 import responses
-from src.database.methods import LessonMethods, CourseMethods, ProgressMethods, AiTaskMethods
+from src.database.methods import LessonMethods, CourseMethods, ProgressMethods, AiTaskMethods, UserMethods
 from src.database.responses import FailedResponse
 from src.api.v1.enums import LessonTypes as lt, MaterialTypes, ProgressTypes
 from src.ai_agent.yandex_gpt import get_answer_ai, generate_task, compare_answers
+from src.api.v1.examples import lesson_examples
 import json
+from src.badges.dispatcher import BadgeDispatcher
+from src.badges.status import BadgeScanStatus
 
 router = APIRouter(prefix="/api/v1/lesson", tags=['Лекции/Уроки', 'Lessons'])
 
 
-@router.post("/addLesson", description="Добавление урока")
-async def _(data: lesson_m.LessonInput, user: user_m.UserResponse = Depends(security.get_user)):
+@router.post("/addLesson", description="Добавление урока и прикрепление его к определенному курсу.\n"
+                                       "Для создания лекционного урока, требуется убрать ключи question_lesson, answer_lesson, attempts.")
+async def _(data: lesson_m.LessonInput = Body(..., example=lesson_examples.ADD_LESSON_EXAMPLE),
+            user: user_m.UserResponse = Depends(security.get_user)):
     # Проверка на автора
     response = await CourseMethods.get_author(data.course_id)
     if isinstance(response, FailedResponse):
@@ -66,7 +71,7 @@ async def _(course_id: int = Query(..., description="Айди курса"),
     return responses.success_response(data=result.data)
 
 
-@router.post("/sign", description="Подписаться на урок")
+@router.post("/sign", description="Подписаться на урок для начала прогресса в системе")
 async def _(data: lesson_m.SignLesson, user: user_m.UserResponse = Depends(security.get_user)):
     response = await LessonMethods.get_lesson(data.lesson_id)
     if isinstance(response, FailedResponse):
@@ -90,6 +95,7 @@ async def _(data: lesson_m.SignLesson, user: user_m.UserResponse = Depends(secur
 
 @router.post("/answerLesson", description="Завершить практический урок. (потратить попытку на ответ)")
 async def _(data: lesson_m.AnswerLesson, user: user_m.UserResponse = Depends(security.get_user)):
+    dispatcher = BadgeDispatcher(user.user_id)
     # Проверка на то, выполнено ли задание
     response = await ProgressMethods.get_status(user.user_id, data.lesson_id)
     if isinstance(response, FailedResponse):
@@ -105,6 +111,11 @@ async def _(data: lesson_m.AnswerLesson, user: user_m.UserResponse = Depends(sec
         raise HTTPException(status_code=result.status_code, detail=detail)
     right = True if result.data else False
     if not right:
+        # Обнуление решенных задач подряд
+        response = await UserMethods.update_success_in_a_row(user_id=user.user_id, reset=True)
+        if isinstance(response, FailedResponse):
+            detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+            raise HTTPException(status_code=result.status_code, detail=detail)
         # Отнятие попыток
         response = await ProgressMethods.update_attempts(user.user_id, data.lesson_id, 1)
         if isinstance(response, FailedResponse):
@@ -130,7 +141,17 @@ async def _(data: lesson_m.AnswerLesson, user: user_m.UserResponse = Depends(sec
     if isinstance(response, FailedResponse):
         detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
         raise HTTPException(status_code=result.status_code, detail=detail)
-    return responses.success_response(data="Урок успешно выполнен!")
+    # Добавление задачи в ряд
+    response = await UserMethods.update_success_in_a_row(user_id=user.user_id, bias=1)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(status_code=response.status_code, detail=response.detail)
+        raise HTTPException(status_code=result.status_code, detail=detail)
+    # Проверка выдачи достижений
+    scan_result = await dispatcher.scan()
+    state_message = "Урок успешно выполнен!"
+    final_message = state_message + " У Вас новое достижение." if BadgeScanStatus.SUCCESS in scan_result.values() \
+        else state_message
+    return responses.success_response(data=final_message)
 
 
 @router.post("/completeLesson", description="Завершить лекционный урок")

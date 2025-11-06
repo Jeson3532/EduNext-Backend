@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from src.api.v1.schemas import course_schema as course_m, user_schema as user_m
 from src.api.v1.methods import security
 from src.api.v1 import responses
@@ -6,12 +6,14 @@ from src.api.v1.enums import MaterialTypes, ProgressTypes
 from src.database.methods import CourseMethods, ProgressMethods
 from src.database.responses import FailedResponse
 from pydantic import ValidationError
+from src.api.v1.examples import course_examples
 
 router = APIRouter(prefix="/api/v1/course", tags=['Курсы', 'Courses'])
 
 
-@router.post("/addCourse")
-async def _(data: course_m.CourseInput, user: user_m.UserResponse = Depends(security.get_user)):
+@router.post("/addCourse", description="Добавление курса")
+async def _(data: course_m.CourseInput = Body(..., example=course_examples.ADD_COURSE_EXAMPLE),
+            user: user_m.UserResponse = Depends(security.get_user)):
     course = course_m.CourseAddModel(
         course_title=data.course_title,
         author=user.username,
@@ -26,7 +28,8 @@ async def _(data: course_m.CourseInput, user: user_m.UserResponse = Depends(secu
     return responses.success_response(data={"message": "Курс успешно создан", "course": course})
 
 
-@router.get("/getCourse")
+@router.get("/getCourse",
+            description="Получение курса в системе. Фильтрация идёт по названию курса и его идентификатору")
 async def _(name: str = Query(default=None, description="Название курса"),
             id_: str = Query(default=None, description="Айди курса"),
             user: user_m.UserResponse = Depends(security.get_user)):
@@ -42,7 +45,7 @@ async def _(name: str = Query(default=None, description="Название кур
                                        detail='Ошибка при валидации данных. Убедитесь, что вводите всё в соответствии с формой')
 
 
-@router.post("/sign")
+@router.post("/sign", description="Подписка на курс для начала прогресса в системе")
 async def _(data: course_m.SignCourse, user: user_m.UserResponse = Depends(security.get_user)):
     material = user_m.UserAddProgress(
         user_id=user.user_id,
