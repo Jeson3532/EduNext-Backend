@@ -37,3 +37,13 @@ class UpdateNumLessons(BaseModel):
 
 class SignCourse(BaseModel):
     course_id: int
+
+
+class UpdateCourse(BaseModel):
+    course_id: int
+    changes: dict = Field(...,
+                          description='Словарь в формате {"attr": "new_value"}, где в ключе подается атрибут, а в значении новая информация об объекте')
+
+
+class DeleteCourse(BaseModel):
+    course_id: int

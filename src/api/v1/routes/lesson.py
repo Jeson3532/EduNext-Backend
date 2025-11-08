@@ -93,6 +93,49 @@ async def _(data: lesson_m.SignLesson, user: user_m.UserResponse = Depends(secur
     return responses.success_response(data=result.data)
 
 
+@router.patch("/updateLesson", description="Изменение урока в курсе")
+async def _(data: lesson_m.UpdateLesson = Body(..., example=lesson_examples.UPDATE_LESSON),
+            user: user_m.UserResponse = Depends(security.get_user)):
+    # Проверка на автора
+    response = await CourseMethods.get_author(data.course_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    if user.username != response.data:
+        detail = responses.fail_response(status_code=400,
+                                         detail="Вы не являетесь автором этого курса")
+        raise HTTPException(status_code=400, detail=detail)
+    # Обновление материала урока
+    response = await LessonMethods.update_lesson(data.lesson_id, changes=data.changes)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    return responses.success_response(data=response.data)
+
+
+@router.delete("/deleteLesson", description="Удаление урока в курсе")
+async def _(data: lesson_m.DeleteLesson, user: user_m.UserResponse = Depends(security.get_user)):
+    # Проверка на автора
+    response = await CourseMethods.get_author(data.course_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    if user.username != response.data:
+        detail = responses.fail_response(status_code=400,
+                                         detail="Вы не являетесь автором этого курса")
+        raise HTTPException(status_code=400, detail=detail)
+    # Удаление урока из курса
+    response = await LessonMethods.delete_lesson(data.lesson_id, data.course_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    return responses.success_response(data="Урок успешно удален!")
+
+
 @router.post("/answerLesson", description="Завершить практический урок. (потратить попытку на ответ)")
 async def _(data: lesson_m.AnswerLesson, user: user_m.UserResponse = Depends(security.get_user)):
     dispatcher = BadgeDispatcher(user.user_id)

@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Body
 from src.api.v1.schemas import course_schema as course_m, user_schema as user_m
-from src.api.v1.methods import security
+from src.api.v1.methods import security, patch_allow_attr
 from src.api.v1 import responses
 from src.api.v1.enums import MaterialTypes, ProgressTypes
 from src.database.methods import CourseMethods, ProgressMethods
@@ -58,3 +58,46 @@ async def _(data: course_m.SignCourse, user: user_m.UserResponse = Depends(secur
         detail = responses.fail_response(status_code=result.status_code, detail=result.detail)
         raise HTTPException(status_code=result.status_code, detail=detail)
     return responses.success_response(data=result.data)
+
+
+@router.patch("/updateCourse", description="Изменение существующего курса")
+async def _(data: course_m.UpdateCourse = Body(..., example=course_examples.UPDATE_COURSE),
+            user: user_m.UserResponse = Depends(security.get_user)):
+    # Проверка на автора
+    response = await CourseMethods.get_author(data.course_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    if user.username != response.data:
+        detail = responses.fail_response(status_code=400,
+                                         detail="Вы не являетесь автором этого курса")
+        raise HTTPException(status_code=400, detail=detail)
+    # Обновление материала
+    response = await CourseMethods.update_course(data.course_id, changes=data.changes)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    return responses.success_response(data=response.data)
+
+
+@router.delete("/deleteCourse", description="Удаление курса")
+async def _(data: course_m.DeleteCourse, user: user_m.UserResponse = Depends(security.get_user)):
+    # Проверка на автора
+    response = await CourseMethods.get_author(data.course_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    if user.username != response.data:
+        detail = responses.fail_response(status_code=400,
+                                         detail="Вы не являетесь автором этого курса")
+        raise HTTPException(status_code=400, detail=detail)
+    # Удаление курса
+    response = await CourseMethods.delete_course(data.course_id)
+    if isinstance(response, FailedResponse):
+        detail = responses.fail_response(response.status_code,
+                                         detail=response.detail)
+        raise HTTPException(response.status_code, detail=detail)
+    return responses.success_response(data="Курс успешно удален!")

@@ -1,6 +1,6 @@
 from src.database.model import session_maker
 from src.database.model import Users, Course, Lesson, UserProgress, AiTasks, Badges, UserBadges
-from sqlalchemy import select, exists, cast, String, update, ARRAY
+from sqlalchemy import select, exists, cast, String, update, ARRAY, delete
 from src.utils.logger import logger
 from src.api.v1.schemas import auth_schema as auth_m
 from src.api.v1.schemas import course_schema as course_m
@@ -11,6 +11,7 @@ from sqlalchemy.exc import IntegrityError, ProgrammingError
 from src.database.responses import SuccessResponse, FailedResponse
 from src.api.v1.enums import MaterialTypes, ProgressTypes, LessonTypes
 from src.badges.achievments import Achievement
+from src.api.v1.methods.patch_allow_attr import COURSE_PATCH_ALLOW_ATTR, LESSON_PATCH_ALLOW_ATTR
 from typing import Optional
 from copy import deepcopy
 
@@ -140,6 +141,58 @@ class CourseMethods:
                 await session.rollback()
                 return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
 
+    @classmethod
+    async def update_course(cls, course_id, changes: dict):
+        async with session_maker() as session:
+            try:
+                query = select(Course).where(Course.id == course_id)
+                state = await session.execute(query)
+                course = state.scalar_one_or_none()
+                if not course:
+                    return FailedResponse(status_code=404, detail="Курс не найден")
+                for attr, change in changes.items():
+                    if hasattr(course, attr):
+                        if attr not in COURSE_PATCH_ALLOW_ATTR:
+                            return FailedResponse(status_code=404, detail=f"Вы не можете изменить атрибут '{attr}'")
+                        setattr(course, attr, change)
+                    else:
+                        return FailedResponse(status_code=404, detail=f"Атрибута '{attr}' не существует")
+                copy_course = deepcopy(course)
+                await session.commit()
+                return SuccessResponse(status_code=200, data=copy_course)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def delete_course(cls, course_id):
+        async with session_maker() as session:
+            try:
+                query = select(Course).where(Course.id == course_id)
+                state = await session.execute(query)
+                course = state.scalar_one_or_none()
+                if not course:
+                    return FailedResponse(status_code=404, detail="Курс не найден")
+                await session.delete(course)
+                response = await LessonMethods.delete_all_lessons(course_id)
+                if isinstance(response, FailedResponse):
+                    return FailedResponse(status_code=response.status_code, detail=response.detail)
+                await session.commit()
+                return SuccessResponse(status_code=200, data=True)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
     @staticmethod
     async def update_num_lessons(session, course_id: int, count: int):
         try:
@@ -240,6 +293,86 @@ class LessonMethods:
                 session.add(new_lesson)
                 await session.commit()
                 return SuccessResponse(status_code=200, data=new_dumped_model)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def update_lesson(cls, lesson_id, changes: dict):
+        async with session_maker() as session:
+            try:
+                query = select(Lesson).where(Lesson.id == lesson_id)
+                state = await session.execute(query)
+                lesson = state.scalar_one_or_none()
+                if not lesson:
+                    return FailedResponse(status_code=404, detail="Урока с таким айди не существует")
+                for attr, change in changes.items():
+                    if hasattr(lesson, attr):
+                        if attr not in LESSON_PATCH_ALLOW_ATTR:
+                            return FailedResponse(status_code=404, detail=f"Вы не можете изменить атрибут '{attr}'")
+                        setattr(lesson, attr, change)
+                    else:
+                        return FailedResponse(status_code=404, detail=f"Атрибута '{attr}' не существует")
+                copy_lesson = deepcopy(lesson)
+                await session.commit()
+                return SuccessResponse(status_code=200, data=copy_lesson)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def delete_lesson(cls, lesson_id, course_id):
+        async with session_maker() as session:
+            try:
+                query = select(Lesson).where(Lesson.id == lesson_id).where(Lesson.course_id == course_id)
+                state = await session.execute(query)
+                lesson = state.scalar_one_or_none()
+                if not lesson:
+                    return FailedResponse(status_code=404, detail="Урока с таким айди не существует, либо Вы не являетесь его автором")
+
+                response = await cls.get_count_lessons_in_course(lesson.course_id)
+                if isinstance(response, FailedResponse):
+                    return FailedResponse(status_code=500, detail="Ошибка при получении данных о количестве лекций")
+                num_lessons_in_course = response.data
+                response = await CourseMethods.update_num_lessons(session, lesson.course_id, num_lessons_in_course-1)
+                if isinstance(response, FailedResponse):
+                    return FailedResponse(status_code=500, detail="Ошибка при получении данных о лекциях")
+                await session.delete(lesson)
+                await session.commit()
+                return SuccessResponse(status_code=200, data=True)
+            except ProgrammingError as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Ошибка при получении данных")
+            except Exception as e:
+                logger.error(e)
+                await session.rollback()
+                return FailedResponse(status_code=500, detail="Произошла непредвиденная ошибка")
+
+    @classmethod
+    async def delete_all_lessons(cls, course_id):
+        async with session_maker() as session:
+            try:
+                query = select(Lesson).where(Lesson.course_id == course_id)
+                state = await session.execute(query)
+                lessons = state.scalars().all()
+                if not lessons:
+                    return FailedResponse(status_code=404, detail="Уроков в этом курсе нет")
+
+                for lesson in lessons:
+                    await session.delete(lesson)
+                await session.commit()
+                return SuccessResponse(status_code=200, data=True)
             except ProgrammingError as e:
                 logger.error(e)
                 await session.rollback()

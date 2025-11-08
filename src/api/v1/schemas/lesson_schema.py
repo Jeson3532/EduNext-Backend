@@ -26,3 +26,15 @@ class SignLesson(BaseModel):
 class AnswerLesson(BaseModel):
     lesson_id: int
     answer: str
+
+
+class UpdateLesson(BaseModel):
+    course_id: int
+    lesson_id: int
+    changes: dict = Field(...,
+                          description='Словарь в формате {"attr": "new_value"}, где в ключе подается атрибут, а в значении новая информация об объекте')
+
+
+class DeleteLesson(BaseModel):
+    course_id: int
+    lesson_id: int

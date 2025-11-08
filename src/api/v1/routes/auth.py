@@ -24,7 +24,7 @@ async def _(reg_form: auth_m.RegForm = Body(..., example=auth_examples.REG_FORM_
             "last_name": reg_form.last_name,
             "age": reg_form.age,
             "email": reg_form.email,
-            "phone": reg_form.phone.split("tel:")[1],
+            "phone": reg_form.phone,
             "role": Roles.USER,
             # "success_in_a_row": 0
         }
